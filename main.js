@@ -67,32 +67,54 @@ function createWindow() {
   win.once('ready-to-show', () => { if (!startHidden) win.show(); else win.hide(); });
 
 
-  // شمارنده نخوانده از DOM (badge های چت‌ها با ارقام فارسی — با فوکوس صفر نمی‌شود)
-  // selector اصلی span.eVv8xC است؛ اگر نسخه‌ی بعد بله کلاس را عوض کرد، جستجوی عمومی fallback می‌شود
+  // شمارنده نخوانده از DOM: بج‌های span.eVv8xC (ارقام فارسی)، حذف mute و مخفی‌ها
+  const JS_ERR_LOG = require('path').join(os.homedir(), '.cache', 'bale-wrapper', 'js-err.log');
   setInterval(() => {
     if (!win || win.isDestroyed()) return;
-    win.webContents.executeJavaScript(`(() => {
-      const toNum = t => {
-        let v = 0;
-        for (const ch of t) {
-          const fi = '۰۱۲۳۴۵۶۷۸۹'.indexOf(ch);
-          v = v * 10 + (fi >= 0 ? fi : (/[0-9]/.test(ch) ? +ch : NaN));
+    const script =
+      'try {' +
+      'const toNum = t => {' +
+      '  let v = 0;' +
+      '  for (const ch of t) {' +
+      "    const fi = '۰۱۲۳۴۵۶۷۸۹'.indexOf(ch);" +
+      '    v = v * 10 + (fi >= 0 ? fi : (/[0-9]/.test(ch) ? +ch : NaN));' +
+      '  }' +
+      '  return v;' +
+      '};' +
+      "const re = /^[0-9\u06F0-\u06F9]{1,4}$/;" +
+      "const isMuted = el => {" +
+      '  let p = el.parentElement;' +
+      '  for (let i = 0; i < 8 && p; i++, p = p.parentElement) {' +
+      "    if (/mute/i.test(String(p.className || ''))) return true;" +
+      '  }' +
+      '  return false;' +
+      '};' +
+      "let els = document.querySelectorAll('span.eVv8xC');" +
+      'if (els.length === 0) {' +
+      "  els = [...document.querySelectorAll('span')].filter(el =>" +
+      "    el.children.length === 0 && re.test((el.textContent || '').trim()));" +
+      '}' +
+      'let sum = 0;' +
+      'els.forEach(el => {' +
+      "  if (el.offsetParent === null && getComputedStyle(el).position !== 'fixed') return;" +
+      '  if (isMuted(el)) return;' +
+      "  const t = (el.textContent || '').trim();" +
+      '  if (re.test(t)) { const v = toNum(t); if (!isNaN(v)) sum += v; }' +
+      '});' +
+      'String(sum);' +
+      '} catch (e) { String("PAGE-ERR:" + e.message); }';
+    win.webContents.executeJavaScript(script)
+      .then(n => {
+        if (String(n).startsWith('PAGE-ERR:')) {
+          try { require('fs').appendFileSync(JS_ERR_LOG, String(n).slice(0, 140) + '\n'); } catch (_) {}
+          return;
         }
-        return v;
-      };
-      const re = /^[0-9۰-۹]{1,4}$/;
-      let els = document.querySelectorAll('span.eVv8xC');
-      if (els.length === 0) {
-        els = [...document.querySelectorAll('span')].filter(el =>
-          el.children.length === 0 && re.test((el.textContent || '').trim()));
-      }
-      let sum = 0;
-      els.forEach(el => {
-        const t = (el.textContent || '').trim();
-        if (re.test(t)) { const v = toNum(t); if (!isNaN(v)) sum += v; }
+        writeUnread(parseInt(n, 10) || 0);
+        try { require('fs').appendFileSync(require('path').join(os.homedir(), '.cache', 'bale-wrapper', 'tick.log'), new Date().toISOString().slice(11,19) + ' n=' + n + '\n'); } catch (_) {}
+      })
+      .catch(e => {
+        try { require('fs').appendFileSync(JS_ERR_LOG, String(e).slice(0, 120) + '\n'); } catch (_) {}
       });
-      return Math.min(sum, 999);
-    })()`).then(n => { writeUnread(parseInt(n, 10) || 0); }).catch(() => {});
   }, 2000);
 }
 
