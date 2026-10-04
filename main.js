@@ -45,7 +45,7 @@ function createWindow() {
     icon: path.join(__dirname, 'bale.png'),
     title: 'بله',
     backgroundColor: '#ffffff',
-    webPreferences: { contextIsolation: true, spellcheck: false },
+    webPreferences: { contextIsolation: true, spellcheck: false, backgroundThrottling: false },
   });
 
   win.loadURL(BALE_URL);
@@ -82,12 +82,12 @@ function createWindow() {
       '  return v;' +
       '};' +
       "const re = /^[0-9\u06F0-\u06F9]{1,4}$/;" +
-      "const isMuted = el => {" +
-      '  let p = el.parentElement;' +
-      '  for (let i = 0; i < 8 && p; i++, p = p.parentElement) {' +
-      "    if (/mute/i.test(String(p.className || ''))) return true;" +
-      '  }' +
-      '  return false;' +
+      "const isRedBadge = el => {" +
+      '  const st = getComputedStyle(el).backgroundColor;' +
+      "  const m = st.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);" +
+      '  if (!m) return false;' +
+      '  const r = +m[1], g = +m[2], b = +m[3];' +
+      '  return r > 120 && r > g + 40 && r > b + 40;' +
       '};' +
       "let els = document.querySelectorAll('span.eVv8xC');" +
       'if (els.length === 0) {' +
@@ -97,7 +97,7 @@ function createWindow() {
       'let sum = 0;' +
       'els.forEach(el => {' +
       "  if (el.offsetParent === null && getComputedStyle(el).position !== 'fixed') return;" +
-      '  if (isMuted(el)) return;' +
+      '  if (!isRedBadge(el)) return;' +
       "  const t = (el.textContent || '').trim();" +
       '  if (re.test(t)) { const v = toNum(t); if (!isNaN(v)) sum += v; }' +
       '});' +
