@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=بله
+Comment=پیام‌رسان بله (wrapper با تم روشن و tray)
+Exec=/home/YOURUSER/apps/bale-wrapper/launch-bale.sh
+Icon=/home/YOURUSER/apps/bale-wrapper/bale.png
+Terminal=false
+Categories=Network;InstantMessaging;
+StartupWMClass=Bale Web
