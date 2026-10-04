@@ -31,11 +31,21 @@ git clone <این-ریپو> ~/apps/bale-wrapper
 cd ~/apps/bale-wrapper
 npm install            # electron را می‌گیرد
 ./make-badges.py       # آیکون‌های شمارنده (badge ها از قبل موجودند؛ فقط در صورت نیاز)
-~/apps/bale-wrapper/launch-bale.sh
 ```
 
-استارت خودکار: فایل `bale-wrapper.desktop` نمونه را در `~/.config/autostart/` بگذارید
-با `Exec=/home/USER/apps/bale-wrapper/launch-bale.sh --hidden`.
+### اجرای پایدار (توصیه‌شده): سرویس systemd --user
+
+الکترون زیر systemd سخت‌گیرانه با sandbox برخورد می‌کند؛ سرویس‌های آماده با `--no-sandbox`:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/bale.service systemd/bale-tray.service ~/.config/systemd/user/
+sed -i "s|%h/apps/bale-wrapper|%h/YOUR/PATH|g" ~/.config/systemd/user/bale*.service  # اگر مسیر دیگری دارید
+systemctl --user daemon-reload && systemctl --user enable --now bale.service bale-tray.service
+```
+
+با این روش اگر الکترون کرش کند خودش بالا می‌آید (Restart=on-failure) و لاگ در journalctl است.
+مسیر قدیمی: `launch-bale.sh` (nohup).
 
 ## معماری کوتاه (برای نگهداری)
 
