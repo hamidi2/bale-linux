@@ -1,7 +1,7 @@
 // بله دسکتاپ — wrapper سبک Electron
 // تم light اجباری (رفع کندی رندر emoji در دارک)
-// tray icon توسط tray.py (XEmbed — کلیک چپ=باز/بسته، راست=منو، شمارنده روی آیکون)
-// ارتباط: SIGHUP به این پروسه = toggle پنجره؛ فایل unread = تعداد نخوانده‌ها
+// «بستن» = پنجره به خارج از صفحه می‌رود + از taskbar حذف (مپ می‌ماند تا title خوانده شود)
+// tray.py: کلیک = SIGHUP به این پروسه (toggle)؛ تعداد نخوانده = از title پنجره (WM-level)
 const { app, BrowserWindow, nativeTheme, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -9,31 +9,38 @@ const os = require('os');
 
 const BALE_URL = 'https://web.bale.ai';
 const startHidden = process.argv.includes('--hidden');
-const STATE_DIR = path.join(os.homedir(), '.cache', 'bale-wrapper');
-const PID_FILE = path.join(STATE_DIR, 'pid');
-const UNREAD_FILE = path.join(STATE_DIR, 'unread');
 
 let win = null;
 let quitting = false;
-let lastUnread = -1;
+let offscreen = false;
+let savedBounds = null;
 
 nativeTheme.themeSource = 'light';
+fs.mkdirSync(path.join(os.homedir(), '.cache', 'bale-wrapper'), { recursive: true });
+try { fs.writeFileSync(path.join(os.homedir(), '.cache', 'bale-wrapper', 'pid'), String(process.pid)); } catch (e) {}
 
-fs.mkdirSync(STATE_DIR, { recursive: true });
-fs.writeFileSync(PID_FILE, String(process.pid));
+function hideToTray() {
+  if (!win || win.isDestroyed()) return;
+  savedBounds = win.getBounds();
+  offscreen = true;
+  win.setSkipTaskbar(true);
+  win.setPosition(-32768, -32768);
+}
 
-function writeUnread(n) {
-  if (n === lastUnread) return;
-  lastUnread = n;
-  try { fs.writeFileSync(UNREAD_FILE, String(n)); } catch (e) {}
+function showFromTray() {
+  if (!win || win.isDestroyed()) return;
+  offscreen = false;
+  win.setSkipTaskbar(false);
+  if (savedBounds) win.setBounds(savedBounds);
+  win.show();
+  win.focus();
 }
 
 function toggleWindow() {
-  if (!win || win.isDestroyed()) return;
-  if (win.isVisible() && win.isFocused()) win.hide();
-  else { win.setSkipTaskbar(false); win.show(); win.focus(); }
+  if (offscreen) showFromTray(); else hideToTray();
 }
 
+process.on('SIGHUP', () => { if (app.isReady()) toggleWindow(); });
 
 function createWindow() {
   win = new BrowserWindow({
@@ -58,76 +65,24 @@ function createWindow() {
     return { action: 'allow' };
   });
 
-  // بستن و مینیمایز = مخفی (از تسک‌بار هم حذف شود)
-  const hideToTray = () => { win.hide(); };
+  // بستن/مینیمایز = خارج از صفحه + بدون taskbar (پنجره mapped می‌ماند)
   win.on('close', (e) => { if (!quitting) { e.preventDefault(); hideToTray(); } });
   win.on('minimize', (e) => { e.preventDefault(); hideToTray(); });
-  win.on('hide', () => { if (win && !win.isDestroyed()) win.setSkipTaskbar(true); });
-  win.on('show', () => { if (win && !win.isDestroyed()) win.setSkipTaskbar(false); });
-  win.once('ready-to-show', () => { if (!startHidden) win.show(); else win.hide(); });
-
-
-  // شمارنده نخوانده از DOM: بج‌های span.eVv8xC (ارقام فارسی)، حذف mute و مخفی‌ها
-  const JS_ERR_LOG = require('path').join(os.homedir(), '.cache', 'bale-wrapper', 'js-err.log');
-  setInterval(() => {
-    if (!win || win.isDestroyed()) return;
-    const script =
-      'try {' +
-      'const toNum = t => {' +
-      '  let v = 0;' +
-      '  for (const ch of t) {' +
-      "    const fi = '۰۱۲۳۴۵۶۷۸۹'.indexOf(ch);" +
-      '    v = v * 10 + (fi >= 0 ? fi : (/[0-9]/.test(ch) ? +ch : NaN));' +
-      '  }' +
-      '  return v;' +
-      '};' +
-      "const re = /^[0-9\u06F0-\u06F9]{1,4}$/;" +
-      "const isRedBadge = el => {" +
-      '  const st = getComputedStyle(el).backgroundColor;' +
-      "  const m = st.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);" +
-      '  if (!m) return false;' +
-      '  const r = +m[1], g = +m[2], b = +m[3];' +
-      '  return r > 120 && r > g + 40 && r > b + 40;' +
-      '};' +
-      "let els = document.querySelectorAll('span.eVv8xC');" +
-      'if (els.length === 0) {' +
-      "  els = [...document.querySelectorAll('span')].filter(el =>" +
-      "    el.children.length === 0 && re.test((el.textContent || '').trim()));" +
-      '}' +
-      'let sum = 0;' +
-      'els.forEach(el => {' +
-      "  if (el.offsetParent === null && getComputedStyle(el).position !== 'fixed') return;" +
-      '  if (!isRedBadge(el)) return;' +
-      "  const t = (el.textContent || '').trim();" +
-      '  if (re.test(t)) { const v = toNum(t); if (!isNaN(v)) sum += v; }' +
-      '});' +
-      'String(sum);' +
-      '} catch (e) { String("PAGE-ERR:" + e.message); }';
-    win.webContents.executeJavaScript(script)
-      .then(n => {
-        if (String(n).startsWith('PAGE-ERR:')) {
-          try { require('fs').appendFileSync(JS_ERR_LOG, String(n).slice(0, 140) + '\n'); } catch (_) {}
-          return;
-        }
-        writeUnread(parseInt(n, 10) || 0);
-        try { require('fs').appendFileSync(require('path').join(os.homedir(), '.cache', 'bale-wrapper', 'tick.log'), new Date().toISOString().slice(11,19) + ' n=' + n + '\n'); } catch (_) {}
-      })
-      .catch(e => {
-        try { require('fs').appendFileSync(JS_ERR_LOG, String(e).slice(0, 120) + '\n'); } catch (_) {}
-      });
-  }, 2000);
+  win.once('ready-to-show', () => {
+    if (startHidden) hideToTray(); else { win.show(); win.focus(); }
+  });
 }
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) { app.quit(); }
 app.on('second-instance', () => {
-  if (win && !win.isDestroyed()) { win.setSkipTaskbar(false); win.show(); win.focus(); }
+  if (!app.isReady() || !win || win.isDestroyed()) return;
+  if (offscreen) showFromTray();
+  else if (win.isVisible() && win.isFocused()) hideToTray();
+  else { win.show(); win.focus(); }
 });
 
-app.whenReady().then(() => {
-  createWindow();
-  writeUnread(0);
-});
+app.whenReady().then(() => { createWindow(); });
 
 app.on('window-all-closed', () => {});
 app.on('before-quit', () => { quitting = true; });
