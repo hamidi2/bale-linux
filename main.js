@@ -1,7 +1,7 @@
 // بله دسکتاپ — wrapper سبک Electron
 // تم light اجباری (رفع کندی رندر emoji در دارک)
-// «بستن» = پنجره به خارج از صفحه می‌رود + از taskbar حذف (مپ می‌ماند تا title خوانده شود)
-// tray.py: کلیک = SIGHUP به این پروسه (toggle)؛ تعداد نخوانده = از title پنجره (WM-level)
+// بستن/مینیمایز = hide (پروسه زنده) | کلیک tray = toggle منطق تلگرامی (در tray.py)
+// شمارنده: tray.py از title پنجره می‌خواند (window id در ~/.cache/bale-wrapper/wid)
 const { app, BrowserWindow, nativeTheme, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -9,38 +9,13 @@ const os = require('os');
 
 const BALE_URL = 'https://web.bale.ai';
 const startHidden = process.argv.includes('--hidden');
+const STATE_DIR = path.join(os.homedir(), '.cache', 'bale-wrapper');
 
 let win = null;
 let quitting = false;
-let offscreen = false;
-let savedBounds = null;
 
 nativeTheme.themeSource = 'light';
-fs.mkdirSync(path.join(os.homedir(), '.cache', 'bale-wrapper'), { recursive: true });
-try { fs.writeFileSync(path.join(os.homedir(), '.cache', 'bale-wrapper', 'pid'), String(process.pid)); } catch (e) {}
-
-function hideToTray() {
-  if (!win || win.isDestroyed()) return;
-  savedBounds = win.getBounds();
-  offscreen = true;
-  win.setSkipTaskbar(true);
-  win.setPosition(-32768, -32768);
-}
-
-function showFromTray() {
-  if (!win || win.isDestroyed()) return;
-  offscreen = false;
-  win.setSkipTaskbar(false);
-  if (savedBounds) win.setBounds(savedBounds);
-  win.show();
-  win.focus();
-}
-
-function toggleWindow() {
-  if (offscreen) showFromTray(); else hideToTray();
-}
-
-process.on('SIGHUP', () => { if (app.isReady()) toggleWindow(); });
+fs.mkdirSync(STATE_DIR, { recursive: true });
 
 function createWindow() {
   win = new BrowserWindow({
@@ -57,6 +32,12 @@ function createWindow() {
 
   win.loadURL(BALE_URL);
 
+  // window id برای tray.py (خواندن title حتی وقتی پنجره hide است)
+  try {
+    const wh = win.getNativeWindowHandle();
+    fs.writeFileSync(path.join(STATE_DIR, 'wid'), '0x' + wh.readUInt32LE(0).toString(16));
+  } catch (e) {}
+
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (!url.includes('bale.ai')) {
       shell.openExternal(url);
@@ -65,21 +46,22 @@ function createWindow() {
     return { action: 'allow' };
   });
 
-  // بستن/مینیمایز = خارج از صفحه + بدون taskbar (پنجره mapped می‌ماند)
-  win.on('close', (e) => { if (!quitting) { e.preventDefault(); hideToTray(); } });
-  win.on('minimize', (e) => { e.preventDefault(); hideToTray(); });
-  win.once('ready-to-show', () => {
-    if (startHidden) hideToTray(); else { win.show(); win.focus(); }
-  });
+  // بستن/مینیمایز = مخفی از taskbar (پروسه زنده)
+  win.on('close', (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
+  win.on('minimize', (e) => { e.preventDefault(); win.hide(); });
+  win.on('hide', () => { if (win && !win.isDestroyed()) win.setSkipTaskbar(true); });
+  win.on('show', () => { if (win && !win.isDestroyed()) win.setSkipTaskbar(false); });
+  win.once('ready-to-show', () => { if (!startHidden) { win.show(); win.focus(); } else win.hide(); });
 }
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) { app.quit(); }
+// اجرای دوباره لانچر = فقط نمایش (تصمیم toggle با tray.py است)
 app.on('second-instance', () => {
   if (!app.isReady() || !win || win.isDestroyed()) return;
-  if (offscreen) showFromTray();
-  else if (win.isVisible() && win.isFocused()) hideToTray();
-  else { win.show(); win.focus(); }
+  win.setSkipTaskbar(false);
+  win.show();
+  win.focus();
 });
 
 app.whenReady().then(() => { createWindow(); });
