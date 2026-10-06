@@ -2,7 +2,7 @@
 # آیکون tray بله — Gtk.StatusIcon
 # کلیک چپ: مخفی→نمایش+فوکوس | نمایان بی‌فوکوس→فوکوس | نمایان فوکوس→مخفی (منطق تلگرام)
 # شمارنده: title پنجره (xprop -id) — حتی وقتی مخفی
-import subprocess, re
+import subprocess, re, time
 from pathlib import Path
 import gi
 gi.require_version('Gtk', '3.0')
@@ -66,11 +66,21 @@ def on_popup(si, button, time_):
     menu.append(m1); menu.append(m2); menu.show_all()
     menu.popup(None, None, Gtk.StatusIcon.position_menu, si, button, time_)
 
-icon.connect('activate', toggle)
+import time as _time
+_last_toggle = [0.0]
+def toggle_debounced(*a):
+    now = _time.time()
+    if now - _last_toggle[0] < 0.7:   # دابل‌کلیک = دو activate پشت هم؛ فقط اولی عمل کند
+        return
+    _last_toggle[0] = now
+    toggle(*a)
+icon.connect('activate', toggle_debounced)
 icon.connect('popup-menu', on_popup)
 
 last = [-2]
+last_nonzero = 0.0
 def poll():
+    global last, last_nonzero
     n = 0
     wid = get_wid()
     if wid:
@@ -79,6 +89,13 @@ def poll():
         if m:
             mm = re.search(r'\((\d{1,4})\)\s*$', m.group(1))
             if mm: n = int(mm.group(1))
+    # ضدفلیکر: وقتی پنجره باز می‌شود، بله یک لحظه title را بدون عدد می‌گذارد.
+    # صفر را فقط ۴ ثانیه بعد از آخرین عددِ غیرصفر قبول کن.
+    now = time.time()
+    if n > 0:
+        last_nonzero = now
+    elif now - last_nonzero < 4:
+        n = last[0] if last[0] > 0 else 0
     if n != last[0]:
         last[0] = n
         GLib.idle_add(icon.set_from_file, icon_path(n))

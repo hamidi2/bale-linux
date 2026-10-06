@@ -2,6 +2,7 @@
 // تم light اجباری (رفع کندی رندر emoji در دارک)
 // بستن/مینیمایز = hide (پروسه زنده) | کلیک tray = toggle منطق تلگرامی (در tray.py)
 // شمارنده: tray.py از title پنجره می‌خواند (window id در ~/.cache/bale-wrapper/wid)
+// نکته: wrapper آگاهانه از پروکسی سیستم تبعیت نمی‌کند (کرومیوم پیش‌فرض) — بله همیشه مستقیم می‌رود
 const { app, BrowserWindow, nativeTheme, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
