@@ -8,29 +8,36 @@
 
 ## چرا این wrapper؟ (ویژگی‌ها)
 
-- **تم روشن اجباری** → رفع کندی رندر emoji که در تم تیره‌ی وب‌اپ در کرومیوم‌ها دیده می‌شود
-- **آیکون نوار وضعیت (tray)** با رفتار درست:
-  - کلیک چپ = باز/بسته‌ی پنجره (مثل تلگرام)
-  - **شمارنده‌ی پیام‌های نخوانده روی آیکون** — خوانده‌شده مستقیم از DOM اپ، پس
-    برخلاف روش «خواندن از title»، با باز/فوکوس‌شدن پنجره صفر نمی‌شود
+- **تم روشن اجباری** → رفع کندی رندر emoji که در تم تیره‌ی وب‌اپ در کرومیوم دیده می‌شود
+- **آیکون نوار وضعیت (tray)** با رفتار درست (`Gtk.StatusIcon` — کلیک چپ real می‌دهد):
+  - **toggle سه‌حالته مثل تلگرام**: مخفی → نمایش+فوکوس | نمایانِ بی‌فوکوس → فوکوس |
+    نمایانِ فوکوس → مخفی
+  - **دابل‌کلیک امن**: debounce ‏۷۰۰ms — دابل‌کلیک (دو activate پشت‌سرهم) فقط یک بار
+    عمل می‌کند؛ بدون فلشِ باز‌وبسته‌شدن
+  - **بج و tooltip پیام نخوانده**: با وجود unread، نقطه‌ی قرمز روی آیکون می‌نشیند و
+    تعداد دقیق در tooltip می‌آید
+- **شمارنده از title پنجره** (نه DOM) — مرجع و پایدار، حتی وقتی پنجره مخفی است
+  - **ضدفلیکر**: صفرِ لحظه‌ی باز شدن پنجره (که بله موقع show در title می‌گذارد) تا
+    ‏۴ ثانیه بعد از آخرین عدد غیرصفر نادیده گرفته می‌شود
 - بستن یا مینیمایز = مخفی‌شدن به tray (پروسه در حال اجرا می‌ماند؛ پیام‌ها می‌رسند)
-- استارت خودکار در login (به‌صورت مخفی در tray)
+- استارت خودکار در login (به‌صورت مخفی در tray) + ری‌استارت خودکار در کرش (systemd)
 - لینک‌های خارجی در مرورگر سیستم باز می‌شوند
+- اجرای دوباره‌ی لانچر = فقط نمایش پنجره (single-instance؛ تصمیم toggle با tray است)
 
 ## پیش‌نیازها
 
 - Node.js و npm (برای نصب Electron)
 - پایتون ۳ با `gi` (PyGObject) و GTK3 — روی اوبونتو/دبیان: `python3-gi` و `libgtk-3-0`
-- `wmctrl`
+- `wmctrl`، `xdotool` و `x11-utils` (دستورات `xprop` و `xwininfo`)
 - پایتون `Pillow` (فقط برای تولید مجدد badge ها: `python3-pil`)
 
 ## نصب
 
 ```bash
-git clone <این-ریپو> ~/apps/bale-wrapper
+git clone https://github.com/hamidi2/bale-linux.git ~/apps/bale-wrapper
 cd ~/apps/bale-wrapper
 npm install            # electron را می‌گیرد
-./make-badges.py       # آیکون‌های شمارنده (badge ها از قبل موجودند؛ فقط در صورت نیاز)
+./make-badges.py       # آیکون‌ها (badge ها از قبل موجودند؛ فقط در صورت نیاز)
 ```
 
 ### اجرای پایدار (توصیه‌شده): سرویس systemd --user
@@ -44,29 +51,35 @@ sed -i "s|%h/apps/bale-wrapper|%h/YOUR/PATH|g" ~/.config/systemd/user/bale*.serv
 systemctl --user daemon-reload && systemctl --user enable --now bale.service bale-tray.service
 ```
 
-با این روش اگر الکترون کرش کند خودش بالا می‌آید (Restart=on-failure) و لاگ در journalctl است.
-مسیر قدیمی: `launch-bale.sh` (nohup).
+با این روش اگر الکترون یا tray کرش کند خودش بالا می‌آید (`Restart=on-failure`) و لاگ در
+`journalctl --user -u bale.service -u bale-tray.service` است.
+مسیر قدیمی (بدون systemd): `launch-bale.sh` (nohup، ایدمپوتنت).
 
 ## معماری کوتاه (برای نگهداری)
 
-- `main.js` — پروسه‌ی Electron: پنجره + تم light + جمع شمارنده از DOM (badge های
-  `span.eVv8xC` با ارقام فارسی) و نوشتن در `~/.cache/bale-wrapper/unread`.
-  **توجه**: اگر بله کلاس badge را در نسخه‌ی بعد عوض کند، fallback خودکار به
-  «هر span عددی» فعال می‌شود؛ اگر شمارنده خراب شد selector را به‌روز کنید.
-- `tray.py` — آیکون tray با `Gtk.StatusIcon` (روی دسکتاپ‌های بدون XEmbed مثل پنل‌های
-  SNI-only این روش کار می‌کند و کلیک چپ real می‌دهد). toggle پنجره: بسته‌شدن با
-  `wmctrl -c` (که main.js آن را به hide تبدیل می‌کند) و بازشدن با اجرای دوباره‌ی
-  الکترون → second-instance → show.
-- `show-bale.sh` / `launch-bale.sh` — دومی idempotent است؛ **هرگز pkill داخلش نگذارید**.
+- `main.js` — پروسه‌ی Electron: پنجره + تم light + بستن/مینیمایز → hide (پروسه زنده،
+  خارج از taskbar) + لینک خارجی → مرورگر سیستم + single-instance (اجرای دوباره =
+  `second-instance` → show+focus).
+- `tray.py` — آیکون tray و تمام هوشِ آن:
+  - تشخیص پنجره با `WM_CLASS='bale-wrapper'` از `xwininfo -root -tree` (پنجره بعد از
+    hide هم در tree می‌ماند)، وضعیت با `WM_STATE` و فوکوس با `_NET_ACTIVE_WINDOW`
+  - شمارنده از `_NET_WM_NAME` (الگوی «(N)» انتهای title که خود بله می‌گذارد)، هر ۲ ثانیه —
+    بدون دست زدن به DOM
+  - بج نقطه‌ای (`badges/badge-dot.png`) + tooltip؛ ضدفلیکر ۴ ثانیه‌ای و debounce ‏۷۰۰ms
+- `show-bale.sh` — فقط سیگنال show به الکترون (اجرای دوباره‌ی باینری → second-instance).
+- `launch-bale.sh` — استارت ایدمپوتنت؛ **هرگز pkill داخلش نگذارید**.
+- `systemd/` — سرویس‌های `bale.service` (الکترون) و `bale-tray.service` (tray).
 
 ## عیب‌یابی
 
 - **کلیک چپ روی آیکون منو باز می‌کند نه toggle** → دسکتاپ شما آیکون را SNI ثبت کرده
   است؛ این پروژه از `Gtk.StatusIcon` استفاده می‌کند که در اکثر محیط‌ها activate می‌دهد.
-  اگر در محیط شما منو باز می‌شود، رفتار status-notifier پنل‌تان StatusNotifierItem را
-  به منو ترجیح می‌دهد — tray.py را با روش محیط خودتان جایگزین کنید.
-- **شمارنده کار نمی‌کند** → selector کلاس badge تغییر کرده؛ در `main.js` بخش شمارنده
-  را به‌روز کنید (DOM بله را با DevTools الکترون — `Ctrl+Shift+I` — بررسی کنید).
+  اگر در محیط شما منو باز می‌شود، پنل‌تان StatusNotifierItem را به منو ترجیح می‌دهد —
+  رفتار tray را با روش محیط خودتان جایگزین کنید.
+- **شمارنده همیشه صفر یا غلط است** → شمارنده به الگوی «(N)» انتهای title تکیه دارد؛ اگر
+  بله در نسخه‌ای فرمت title را عوض کند، regex داخل `poll()` در `tray.py` را به‌روز کنید.
+- **آیکون tray نمی‌آید** → در پنل‌های فقط-SNI مطمئن شوید افزونه‌ی systray فعال است؛
+  `Gtk.StatusIcon` راه XEmbed می‌رود و بسیاری از پنل‌ها هر دو را میزبانی می‌کنند.
 - **Emoji کند است در تم دارک** → همین مشکل انگیزه‌ی ساخت این پروژه بود؛ تم light
   اجباری است و حل می‌کند.
 
@@ -78,6 +91,8 @@ systemctl --user daemon-reload && systemctl --user enable --now bale.service bal
 
 ---
 *Bale for GNU/Linux — an unofficial lightweight Electron wrapper around the official
-web app with a proper tray icon, unread counter (read from DOM, survives focus),
-light-theme enforcement (fixes emoji rendering slowness in dark mode), and
-close-to-tray behavior. MIT licensed; not affiliated with Bale.*
+web app: tray icon with a Telegram-style 3-state toggle (double-click safe via a
+700 ms debounce), unread badge + tooltip read from the window title (works while
+hidden, with anti-flicker grace), close-to-tray, forced light theme (fixes emoji
+rendering slowness in dark mode), and systemd --user services. MIT licensed; not
+affiliated with Bale.*
