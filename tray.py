@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # آیکون tray بله — Gtk.StatusIcon
 # کلیک چپ: مخفی→نمایش+فوکوس | نمایان بی‌فوکوس→فوکوس | نمایان فوکوس→مخفی (منطق تلگرام)
+# هر کلیک یک بار عمل می‌کند؛ کلیکی که وسط جابه‌جایی برسد بعد از جا افتادن پنجره اعمال می‌شود
 # شمارنده: title پنجره (xprop -id) — حتی وقتی مخفی
 import subprocess, re, time
 from pathlib import Path
@@ -24,29 +25,79 @@ def get_wid():
             return line.split()[0]
     return None
 
-def win_state(wid):
-    r = subprocess.run(['xprop', '-id', wid, 'WM_STATE'], capture_output=True, text=True)
-    m = re.search(r'window state:\s*(\w+)', r.stdout)
-    return m.group(1) if m else 'gone'
+def is_visible(wid):
+    """Map State واقعی — پنجره‌ای که با --hidden بالا آمده اصلاً WM_STATE ندارد!"""
+    r = subprocess.run(['xwininfo', '-id', wid], capture_output=True, text=True)
+    return 'IsViewable' in r.stdout
 
 def is_focused(wid):
     r = subprocess.run(['xprop', '-root', '_NET_ACTIVE_WINDOW'], capture_output=True, text=True)
     m = re.search(r'window id # (0x[0-9a-f]+)', r.stdout)
     return bool(m) and int(m.group(1), 16) == int(wid, 16)
 
-def toggle(*a):
+_pending = [0]     # کلیک‌هایی که وسط جابه‌جایی رسیده‌اند — هیچ کلیکی دور ریخته نمی‌شود
+_busy = [False]    # فرمان قبلی هنوز جا نیفتاده
+_started = []      # مهرزمان toggleهای اخیر — مدارشکن ضدحلقهٔ show/hide
+
+def _apply():
+    """یک toggle بر اساس state فعلی؛ برچسبِ فرمان را برمی‌گرداند."""
     wid = get_wid()
     if not wid:
         subprocess.Popen(['systemctl', '--user', 'restart', 'bale.service'])
-        return
-    st = win_state(wid)
-    if st == 'Withdrawn':   # مخفی
+        return 'restart'
+    if not is_visible(wid):             # مخفی (حتی اگر WM_STATE نداشته باشد) → نمایش
         subprocess.Popen([str(BASE / 'show-bale.sh')],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    elif is_focused(wid):   # فوکوس بود → مخفی
+        return 'show'
+    if is_focused(wid):                 # فوکوس → مخفی
         subprocess.run(['wmctrl', '-ic', wid])
-    else:                   # نمایان بی‌فوکوس → فوکوس
-        subprocess.run(['xdotool', 'windowactivate', wid])
+        return 'hide'
+    subprocess.run(['xdotool', 'windowactivate', wid])   # بی‌فوکوس → فوکوس
+    return 'focus'
+
+def _settled(goal):
+    """پنجره به نتیجه‌ی فرمانِ در جریان رسیده؟"""
+    wid = get_wid()
+    if goal == 'restart':
+        return bool(wid)
+    if not wid:
+        return goal == 'hide'
+    if goal == 'show':
+        return is_visible(wid)
+    if goal == 'hide':
+        return not is_visible(wid)
+    return True   # focus
+
+def _drain():
+    if _pending[0] > 0 and not _busy[0]:
+        _pending[0] -= 1   # صف واقعی است؛ بدون تخلیه، toggle تا ابد خودش را صدا می‌زد (باگ حلقه)
+        toggle()
+
+def toggle(*a):
+    if _busy[0]:   # وسط باز/بسته‌شدن: بعد از جا افتادن پنجره اعمال می‌شود
+        _pending[0] = min(_pending[0] + 1, 3)
+        return
+    now = time.time()
+    _started[:] = [t for t in _started if now - t < 10]
+    if len(_started) >= 12:   # مدارشکن: تراکمِ بالاتر از کلیک انسانی = حلقه؛ ریست کامل
+        _pending[0] = 0
+        return
+    _started.append(now)
+    goal = _apply()
+    _busy[0] = True
+    deadline = time.time() + 4
+    def watch():
+        if _settled(goal) or time.time() > deadline:
+            _busy[0] = False
+            # revive بعد از مرگ الکترون با --hidden بی‌صدا است؛ کلیکی که بیدارش کرد
+            # قصد «باز کردن» داشت — اگر کلیک دیگری در صف نبود خودمان show کنیم
+            if goal == 'restart' and _settled(goal) and not _pending[0]:
+                subprocess.Popen([str(BASE / 'show-bale.sh')],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            GLib.idle_add(_drain)
+            return False
+        return True
+    GLib.timeout_add(100, watch)
 
 def quit_all(*a):
     wid = get_wid()
@@ -66,15 +117,7 @@ def on_popup(si, button, time_):
     menu.append(m1); menu.append(m2); menu.show_all()
     menu.popup(None, None, Gtk.StatusIcon.position_menu, si, button, time_)
 
-import time as _time
-_last_toggle = [0.0]
-def toggle_debounced(*a):
-    now = _time.time()
-    if now - _last_toggle[0] < 0.7:   # دابل‌کلیک = دو activate پشت هم؛ فقط اولی عمل کند
-        return
-    _last_toggle[0] = now
-    toggle(*a)
-icon.connect('activate', toggle_debounced)
+icon.connect('activate', toggle)
 icon.connect('popup-menu', on_popup)
 
 last = [-2]

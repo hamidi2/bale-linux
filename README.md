@@ -12,8 +12,9 @@
 - **آیکون نوار وضعیت (tray)** با رفتار درست (`Gtk.StatusIcon` — کلیک چپ real می‌دهد):
   - **toggle سه‌حالته مثل تلگرام**: مخفی → نمایش+فوکوس | نمایانِ بی‌فوکوس → فوکوس |
     نمایانِ فوکوس → مخفی
-  - **دابل‌کلیک امن**: debounce ‏۷۰۰ms — دابل‌کلیک (دو activate پشت‌سرهم) فقط یک بار
-    عمل می‌کند؛ بدون فلشِ باز‌وبسته‌شدن
+  - **هر کلیک حساب است**: کلیک دوم حتی اگر بلافاصله بعد از اولی باشد پنجره را بسته
+    (یا باز) می‌کند؛ کلیکی که وسطِ در حال باز/بسته‌شدن برسد، به‌محض جا افتادن پنجره
+    اعمال می‌شود — هیچ کلیکی گم نمی‌شود
   - **بج و tooltip پیام نخوانده**: با وجود unread، نقطه‌ی قرمز روی آیکون می‌نشیند و
     تعداد دقیق در tooltip می‌آید
 - **شمارنده از title پنجره** (نه DOM) — مرجع و پایدار، حتی وقتی پنجره مخفی است
@@ -65,7 +66,8 @@ systemctl --user daemon-reload && systemctl --user enable --now bale.service bal
     hide هم در tree می‌ماند)، وضعیت با `WM_STATE` و فوکوس با `_NET_ACTIVE_WINDOW`
   - شمارنده از `_NET_WM_NAME` (الگوی «(N)» انتهای title که خود بله می‌گذارد)، هر ۲ ثانیه —
     بدون دست زدن به DOM
-  - بج نقطه‌ای (`badges/badge-dot.png`) + tooltip؛ ضدفلیکر ۴ ثانیه‌ای و debounce ‏۷۰۰ms
+  - بج نقطه‌ای (`badges/badge-dot.png`) + tooltip؛ ضدفلیکر ۴ ثانیه‌ای؛ کلیک‌های حین
+    جابه‌جایی صف می‌شوند و بعد از جا افتادن پنجره اعمال می‌شوند (`_busy`/`_pending`)
 - `show-bale.sh` — فقط سیگنال show به الکترون (اجرای دوباره‌ی باینری → second-instance).
 - `launch-bale.sh` — استارت ایدمپوتنت؛ **هرگز pkill داخلش نگذارید**.
 - `systemd/` — سرویس‌های `bale.service` (الکترون) و `bale-tray.service` (tray).
@@ -91,8 +93,8 @@ systemctl --user daemon-reload && systemctl --user enable --now bale.service bal
 
 ---
 *Bale for GNU/Linux — an unofficial lightweight Electron wrapper around the official
-web app: tray icon with a Telegram-style 3-state toggle (double-click safe via a
-700 ms debounce), unread badge + tooltip read from the window title (works while
-hidden, with anti-flicker grace), close-to-tray, forced light theme (fixes emoji
-rendering slowness in dark mode), and systemd --user services. MIT licensed; not
-affiliated with Bale.*
+web app: tray icon with a Telegram-style 3-state toggle (every click counts — clicks
+arriving mid-transition are applied once the window settles), unread badge + tooltip
+read from the window title (works while hidden, with anti-flicker grace),
+close-to-tray, forced light theme (fixes emoji rendering slowness in dark mode), and
+systemd --user services. MIT licensed; not affiliated with Bale.*
