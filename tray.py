@@ -9,7 +9,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib
 
-BASE = Path.home() / 'apps' / 'bale-wrapper'
+BASE = Path(__file__).resolve().parent   # کنار همین فایل — هم ~/apps/bale-wrapper هم /opt/bale-linux (deb)
 
 def icon_path(n):
     if n > 0:
