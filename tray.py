@@ -122,8 +122,18 @@ icon.connect('popup-menu', on_popup)
 
 last = [-2]
 last_nonzero = 0.0
+_embedded = [None]
 def poll():
     global last, last_nonzero
+    # خودترمیمی ثبت آیکون: اگر tray.py قبل از پنل بالا آمده باشد (مسابقهٔ لاگین)،
+    # آیکون هرگز جا نمی‌افتد؛ چرخهٔ visible ثبت را از نو امتحان می‌کند
+    e = icon.is_embedded()
+    if e != _embedded[0]:
+        print(f'embedded: {e}', flush=True)
+        _embedded[0] = e
+    if not e:
+        icon.set_visible(False)
+        icon.set_visible(True)
     n = 0
     wid = get_wid()
     if wid:
