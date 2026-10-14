@@ -101,12 +101,30 @@ def toggle(*a):
 
 def quit_all(*a):
     wid = get_wid()
-    if wid and win_state(wid) != 'gone':
+    if wid and is_visible(wid):
         subprocess.run(['wmctrl', '-ic', wid])
     GLib.idle_add(Gtk.main_quit)
 
-icon = Gtk.StatusIcon.new_from_file(icon_path(0))
-icon.set_tooltip_text('Bale')
+def make_icon():
+    ic = Gtk.StatusIcon.new_from_file(icon_path(0))
+    ic.connect('activate', toggle)
+    ic.connect('popup-menu', on_popup)
+    ic.set_tooltip_text('Bale')
+    return ic
+
+_embedded = [None]
+def poll():
+    global last, last_nonzero, icon
+    # خودترمیمی ثبت آیکون: اگر tray.py قبل از پنل بالا آمده باشد یا پنل میان‌کار
+    # ری‌استارت شده باشد، چرخهٔ visible کافی نیست — آیکون باید از نو ساخته شود
+    # تا GTK دوباره manager را ببیند (مسابقهٔ لاگین؛ تجربهٔ کانتینر تست)
+    e = icon.is_embedded()
+    if e != _embedded[0]:
+        print(f'embedded: {e}', flush=True)
+        _embedded[0] = e
+    if not e:
+        icon = make_icon()
+    n = 0
 
 def on_popup(si, button, time_):
     menu = Gtk.Menu()
@@ -117,43 +135,12 @@ def on_popup(si, button, time_):
     menu.append(m1); menu.append(m2); menu.show_all()
     menu.popup(None, None, Gtk.StatusIcon.position_menu, si, button, time_)
 
+icon = make_icon()
 icon.connect('activate', toggle)
 icon.connect('popup-menu', on_popup)
 
 last = [-2]
 last_nonzero = 0.0
-_embedded = [None]
-def poll():
-    global last, last_nonzero
-    # خودترمیمی ثبت آیکون: اگر tray.py قبل از پنل بالا آمده باشد (مسابقهٔ لاگین)،
-    # آیکون هرگز جا نمی‌افتد؛ چرخهٔ visible ثبت را از نو امتحان می‌کند
-    e = icon.is_embedded()
-    if e != _embedded[0]:
-        print(f'embedded: {e}', flush=True)
-        _embedded[0] = e
-    if not e:
-        icon.set_visible(False)
-        icon.set_visible(True)
-    n = 0
-    wid = get_wid()
-    if wid:
-        r = subprocess.run(['xprop', '-id', wid, '_NET_WM_NAME'], capture_output=True, text=True)
-        m = re.search(r'=\s*"(.*)"\s*$', r.stdout)
-        if m:
-            mm = re.search(r'\((\d{1,4})\)\s*$', m.group(1))
-            if mm: n = int(mm.group(1))
-    # ضدفلیکر: وقتی پنجره باز می‌شود، بله یک لحظه title را بدون عدد می‌گذارد.
-    # صفر را فقط ۴ ثانیه بعد از آخرین عددِ غیرصفر قبول کن.
-    now = time.time()
-    if n > 0:
-        last_nonzero = now
-    elif now - last_nonzero < 4:
-        n = last[0] if last[0] > 0 else 0
-    if n != last[0]:
-        last[0] = n
-        GLib.idle_add(icon.set_from_file, icon_path(n))
-        GLib.idle_add(icon.set_tooltip_text, f'Bale — {n} unread' if n else 'Bale')
-    return True
 
 GLib.timeout_add_seconds(2, poll)
 Gtk.main()

@@ -42,13 +42,14 @@ Terminal=false
 Categories=Network;InstantMessaging;
 EOF
 
-# autostart سیستم‌گیرانه: هر سشن گرافیکی سرویس‌ها را بالا می‌آورد — نصب‌کننده هیچ کاری نمی‌کند
+# autostart سیستم‌گیرانه: هر سشن گرافیکی سرویس‌ها را بالا می‌آورد — نصب‌کننده هیچ کاری نمی‌کند.
+# import-environment لازم است: یونیت‌ها DISPLAY/XAUTHORITY هاردکد ندارند تا هر سشنی (هر :N) کار کند
 cat > "$PKG/etc/xdg/autostart/bale-linux.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
 Name=Bale (bale-linux)
 Comment=Start the bale services (tray + messenger)
-Exec=systemctl --user start bale.service bale-tray.service
+Exec=sh -c "systemctl --user import-environment DISPLAY XAUTHORITY; systemctl --user start bale.service bale-tray.service"
 TryExec=systemctl
 Terminal=false
 X-GNOME-Autostart-enabled=true
@@ -73,9 +74,21 @@ EOF
 
 cat > "$PKG/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
-# شروع فوری برای کسی که همین حالا با sudo در سشن گرافیکی نصب می‌کند (best-effort)
-if [ -n "${SUDO_USER:-}" ] && [ -d "/run/user/$(id -u "$SUDO_USER" 2>/dev/null)" ]; then
-  runuser -u "$SUDO_USER" -- systemctl --user enable --now bale.service bale-tray.service >/dev/null 2>&1 || true
+# شروع فوری برای کسی که همین حالا در سشن گرافیکی نصب می‌کند (best-effort):
+# نمایشگر فعال کاربر از سوکت‌های X حدس زده می‌شود و env به user manager او برده می‌شود
+if [ -n "${SUDO_USER:-}" ]; then
+  U="$SUDO_USER"; UI=$(id -u "$U" 2>/dev/null); H=$(getent passwd "$U" | cut -d: -f6)
+  XD=""
+  for f in /tmp/.X11-unix/X*; do
+    case "${f##*X}" in ''|*[!0-9]*) ;; *) XD=":${f##*X}"; break;; esac
+  done
+  if [ -n "$XD" ] && [ -n "$UI" ] && [ -d "/run/user/$UI" ]; then
+    XA="$H/.Xauthority"; [ -f "$XA" ] || XA=""
+    runuser -u "$U" -- env DISPLAY="$XD" XAUTHORITY="$XA" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$UI/bus" \
+      systemctl --user import-environment DISPLAY XAUTHORITY >/dev/null 2>&1 || true
+    runuser -u "$U" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$UI/bus" \
+      systemctl --user enable --now bale.service bale-tray.service >/dev/null 2>&1 || true
+  fi
 fi
 cat <<'MSG'
 

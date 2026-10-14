@@ -3,8 +3,6 @@ Description=Bale messenger (electron wrapper)
 After=graphical-session.target
 
 [Service]
-Environment=DISPLAY=:0
-Environment=XAUTHORITY=%h/.Xauthority
 ExecStart=%h/apps/bale-wrapper/node_modules/electron/dist/electron --no-sandbox --ozone-platform=x11 --hidden %h/apps/bale-wrapper
 WorkingDirectory=%h/apps/bale-wrapper
 Restart=on-failure

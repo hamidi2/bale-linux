@@ -3,8 +3,6 @@ Description=Bale tray icon
 After=graphical-session.target bale.service
 
 [Service]
-Environment=DISPLAY=:0
-Environment=XAUTHORITY=%h/.Xauthority
 # بدون انتظار: اگر پنل دیر بیاید، خودترمیمی is_embedded در poll آیکون را جا می‌اندازد
 ExecStart=/usr/bin/python3 %h/apps/bale-wrapper/tray.py
 Restart=on-failure
