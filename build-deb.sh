@@ -10,7 +10,7 @@ NODE_SRC="${NODE_SRC:-$HOME/apps/bale-wrapper/node_modules}"
 PKG="$(mktemp -d)/bale-linux_${VER}_amd64"
 mkdir -p "$PKG/DEBIAN" "$PKG/opt/bale-linux" "$PKG/usr/bin" \
          "$PKG/usr/lib/systemd/user" "$PKG/usr/share/applications" \
-         "$PKG/usr/share/doc/bale-linux"
+         "$PKG/usr/share/doc/bale-linux" "$PKG/etc/xdg/autostart"
 
 # محتویات بسته از همین ریپو + node_modules و package.json از نصب موجود
 cp "$ROOT"/{tray.py,main.js,make-badges.py,launch-bale.sh,show-bale.sh,bale.png,LICENSE,README.md} "$PKG/opt/bale-linux/"
@@ -42,6 +42,18 @@ Terminal=false
 Categories=Network;InstantMessaging;
 EOF
 
+# autostart سیستم‌گیرانه: هر سشن گرافیکی سرویس‌ها را بالا می‌آورد — نصب‌کننده هیچ کاری نمی‌کند
+cat > "$PKG/etc/xdg/autostart/bale-linux.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Bale (bale-linux)
+Comment=Start the bale services (tray + messenger)
+Exec=systemctl --user start bale.service bale-tray.service
+TryExec=systemctl
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
+
 cat > "$PKG/DEBIAN/control" <<EOF
 Package: bale-linux
 Version: $VER
@@ -61,12 +73,14 @@ EOF
 
 cat > "$PKG/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
+# شروع فوری برای کسی که همین حالا با sudo در سشن گرافیکی نصب می‌کند (best-effort)
+if [ -n "${SUDO_USER:-}" ] && [ -d "/run/user/$(id -u "$SUDO_USER" 2>/dev/null)" ]; then
+  runuser -u "$SUDO_USER" -- systemctl --user enable --now bale.service bale-tray.service >/dev/null 2>&1 || true
+fi
 cat <<'MSG'
 
-bale-linux نصب شد (/opt/bale-linux). فعال‌سازی برای کاربر فعلی:
-  systemctl --user enable --now bale.service bale-tray.service
-استارت خودکار در لاگین:
-  cp /usr/share/applications/bale-linux.desktop ~/.config/autostart/bale.desktop
+bale-linux نصب شد (/opt/bale-linux). از لاگین بعدی خودکار در tray است —
+هیچ کار دستی لازم نیست. اجرا/بستن: آیکون tray یا منوی برنامه‌ها → Bale.
 MSG
 EOF
 chmod +x "$PKG/DEBIAN/postinst"
