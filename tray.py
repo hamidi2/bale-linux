@@ -71,9 +71,11 @@ def _settled(goal):
 def _drain():
     if _pending[0] > 0 and not _busy[0]:
         _pending[0] -= 1   # صف واقعی است؛ بدون تخلیه، toggle تا ابد خودش را صدا می‌زد (باگ حلقه)
+        print(f'drain: pending applied', flush=True)
         toggle()
 
 def toggle(*a):
+    print(f'toggle enter: busy={_busy[0]} pending={_pending[0]}', flush=True)
     if _busy[0]:   # وسط باز/بسته‌شدن: بعد از جا افتادن پنجره اعمال می‌شود
         _pending[0] = min(_pending[0] + 1, 3)
         return
@@ -84,6 +86,7 @@ def toggle(*a):
         return
     _started.append(now)
     goal = _apply()
+    print(f'toggle: goal={goal} pending={_pending[0]}', flush=True)
     _busy[0] = True
     deadline = time.time() + 4
     def watch():
@@ -123,6 +126,7 @@ def poll():
         print(f'embedded: {e}', flush=True)
         _embedded[0] = e
     if not e:
+        print('icon rebuilt', flush=True)
         icon = make_icon()
     n = 0
 
@@ -135,9 +139,7 @@ def on_popup(si, button, time_):
     menu.append(m1); menu.append(m2); menu.show_all()
     menu.popup(None, None, Gtk.StatusIcon.position_menu, si, button, time_)
 
-icon = make_icon()
-icon.connect('activate', toggle)
-icon.connect('popup-menu', on_popup)
+icon = make_icon()   # اتصال activate/popup-menu داخل make_icon انجام می‌شود — دوباره وصل نکن (هر کلیک دو بار می‌شد!)
 
 last = [-2]
 last_nonzero = 0.0
