@@ -30,7 +30,6 @@
 - Node.js و npm (برای نصب Electron)
 - پایتون ۳ با `gi` (PyGObject) و GTK3 — روی اوبونتو/دبیان: `python3-gi` و `libgtk-3-0`
 - `wmctrl`، `xdotool` و `x11-utils` (دستورات `xprop` و `xwininfo`)
-- پایتون `Pillow` (فقط برای تولید مجدد badge ها: `python3-pil`)
 
 ## نصب
 
@@ -38,7 +37,6 @@
 git clone https://github.com/hamidi2/bale-linux.git ~/apps/bale-wrapper
 cd ~/apps/bale-wrapper
 npm install            # electron را می‌گیرد
-./make-badges.py       # آیکون‌ها (badge ها از قبل موجودند؛ فقط در صورت نیاز)
 ```
 
 ### اجرای پایدار (توصیه‌شده): سرویس systemd --user

@@ -13,7 +13,7 @@ mkdir -p "$PKG/DEBIAN" "$PKG/opt/bale-linux" "$PKG/usr/bin" \
          "$PKG/usr/share/doc/bale-linux" "$PKG/etc/xdg/autostart"
 
 # محتویات بسته از همین ریپو + node_modules و package.json از نصب موجود
-cp "$ROOT"/{tray.py,main.js,make-badges.py,launch-bale.sh,show-bale.sh,bale.png,LICENSE,README.md} "$PKG/opt/bale-linux/"
+cp "$ROOT"/{tray.py,main.js,launch-bale.sh,show-bale.sh,bale.png,LICENSE,README.md} "$PKG/opt/bale-linux/"
 [ -f "$ROOT/package.json" ] && cp "$ROOT/package.json" "$PKG/opt/bale-linux/" || cp "$(dirname "$NODE_SRC")/package.json" "$PKG/opt/bale-linux/"
 cp -a "$ROOT/badges" "$PKG/opt/bale-linux/badges"
 cp -a "$NODE_SRC" "$PKG/opt/bale-linux/node_modules"
