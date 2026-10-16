@@ -17,6 +17,9 @@ cp "$ROOT"/{tray.py,main.js,launch-bale.sh,show-bale.sh,bale.png,LICENSE,README.
 [ -f "$ROOT/package.json" ] && cp "$ROOT/package.json" "$PKG/opt/bale-linux/" || cp "$(dirname "$NODE_SRC")/package.json" "$PKG/opt/bale-linux/"
 cp -a "$ROOT/badges" "$PKG/opt/bale-linux/badges"
 cp -a "$NODE_SRC" "$PKG/opt/bale-linux/node_modules"
+# حذف لوکال‌های بلااستفادهٔ الکترون — فقط فارسی و انگلیسی می‌مانند (~۸MB سبک‌تر)
+LO="$PKG/opt/bale-linux/node_modules/electron/dist/locales"
+[ -d "$LO" ] && find "$LO" -name '*.pak' ! -name 'fa.pak' ! -name 'en-US.pak' -delete
 
 # لانچر عمومی
 cat > "$PKG/usr/bin/bale-linux" <<'EOF'
@@ -89,6 +92,12 @@ if [ -n "${SUDO_USER:-}" ]; then
     runuser -u "$U" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$UI/bus" \
       systemctl --user enable --now bale.service bale-tray.service >/dev/null 2>&1 || true
   fi
+fi
+# ارتقا روی سشن فعال: سرویس‌های در حال اجرا کد جدید را بگیرند (بدون relogin)
+if [ -n "${SUDO_USER:-}" ]; then
+  UI=$(id -u "$SUDO_USER" 2>/dev/null)
+  [ -n "$UI" ] && [ -d "/run/user/$UI" ] && runuser -u "$U" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$UI/bus" \
+    systemctl --user try-restart bale.service bale-tray.service >/dev/null 2>&1 || true
 fi
 cat <<'MSG'
 
