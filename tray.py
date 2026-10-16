@@ -128,7 +128,28 @@ def poll():
     if not e:
         print('icon rebuilt', flush=True)
         icon = make_icon()
+    # شمارنده: «(N)» انتهای title پنجره (خودِ بله می‌گذارد) — حتی وقتی پنجره مخفی است
     n = 0
+    wid = get_wid()
+    if wid:
+        r = subprocess.run(['xprop', '-id', wid, '_NET_WM_NAME'], capture_output=True, text=True)
+        m = re.search(r'=\s*"(.*)"\s*$', r.stdout)
+        if m:
+            mm = re.search(r'\((\d{1,4})\)\s*$', m.group(1))
+            if mm: n = int(mm.group(1))
+    # ضدفلیکر: وقتی پنجره باز می‌شود، بله یک لحظه title را بدون عدد می‌گذارد.
+    # صفر را فقط ۴ ثانیه بعد از آخرین عددِ غیرصفر قبول کن.
+    now = time.time()
+    if n > 0:
+        last_nonzero = now
+    elif now - last_nonzero < 4:
+        n = last[0] if last[0] > 0 else 0
+    if n != last[0]:
+        last[0] = n
+        print(f'count: {n}', flush=True)
+        GLib.idle_add(icon.set_from_file, icon_path(n))
+        GLib.idle_add(icon.set_tooltip_text, f'Bale — {n} unread' if n else 'Bale')
+    return True   # تایمر ۲ ثانیه‌ای باید زنده بماند
 
 def on_popup(si, button, time_):
     menu = Gtk.Menu()

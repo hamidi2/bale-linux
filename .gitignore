@@ -1,5 +1,6 @@
+dist/
+*.log
 node_modules/
 package-lock.json
-*.log
 PUSH.md
-dist/
+__pycache__/
