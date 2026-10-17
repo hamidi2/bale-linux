@@ -115,7 +115,8 @@ def quit_all(*a):
     GLib.idle_add(Gtk.main_quit)
 
 def make_icon():
-    ic = Gtk.StatusIcon.new_from_file(icon_path(0))
+    # با بجِ «فعلی» بساز — نه badge-0؛ وگرنه بعد از هر rebuild، دات تا تغییر بعدیِ count گم می‌شد
+    ic = Gtk.StatusIcon.new_from_file(icon_path(read_count()))
     ic.connect('activate', toggle)
     ic.connect('popup-menu', on_popup)
     ic.set_tooltip_text('Bale')
@@ -166,6 +167,19 @@ def apply_count(n):
 def on_unread_changed(*a):
     GLib.idle_add(lambda: apply_count(read_count()))
 
+def _docked():
+    """plug واقعاً داخل پنل نشسته؟ (is_embedded گاهی دروغ می‌گوید — plug یتیم منفی جا خوش می‌کند)"""
+    out = subprocess.run(['xwininfo', '-root', '-tree'], capture_output=True, text=True).stdout
+    for line in out.splitlines():
+        if '"tray.py"' in line:
+            toks = line.split()
+            if len(toks) >= 3:
+                wh = re.match(r'(\d+)x(\d+)$', toks[-2])
+                xy = re.match(r'\+(-?\d+)\+(-?\d+)$', toks[-1])
+                if wh and xy and int(wh.group(1)) >= 15 and int(xy.group(1)) >= 0 and int(xy.group(2)) >= 0:
+                    return True
+    return False
+
 def heartbeat():
     global icon
     # ضربان کم‌بسامد (۳۰ ثانیه): فقط سلامت embed آیکون + همگام‌سازی اطمینان؛
@@ -174,8 +188,8 @@ def heartbeat():
     if e != _embedded[0]:
         print(f'embedded: {e}', flush=True)
         _embedded[0] = e
-    if not e:
-        print('icon rebuilt', flush=True)
+    if not e or not _docked():
+        print(f'icon rebuilt (embedded={e} docked={_docked()})', flush=True)
         icon = make_icon()
     apply_count(read_count())
     return True
