@@ -60,6 +60,7 @@ function createWindow() {
   win.on('minimize', (e) => { e.preventDefault(); win.hide(); });
   win.on('hide', () => { if (win && !win.isDestroyed()) win.setSkipTaskbar(true); });
   win.on('show', () => { if (win && !win.isDestroyed()) win.setSkipTaskbar(false); });
+  win.on('page-title-updated', (e, title) => pushUnread(title));
   win.once('ready-to-show', () => { if (!startHidden) { win.show(); win.focus(); } else win.hide(); });
 }
 
@@ -73,22 +74,19 @@ app.on('second-instance', () => {
   win.focus();
 });
 
-// شمارندهٔ unread: title زندهٔ صفحه هر ۲ ثانیه مستقیم از رندرر خوانده و در فایل
-// state نوشته می‌شود؛ tray.py از فایل می‌خواند چون title در حالت hidden به X نمی‌رسد
+// شمارندهٔ unread: کاملاً رویدادی — صفحهٔ بله title را عوض می‌کند (رندرر حتی در
+// tray زنده است؛ backgroundThrottling:false) و ما فقط گوش می‌دهیم؛ نه تایمری نه polling
 const UNREAD_FILE = path.join(STATE_DIR, 'unread');
-setInterval(() => {
-  if (!win || win.isDestroyed()) return;
-  win.webContents.executeJavaScript('document.title', true).then((title) => {
-    if (typeof title !== 'string') return;
-    if (title !== win.getTitle()) win.setTitle(title);
-    const m = title.match(/\(([0-9\u06F0-\u06F9]{1,4})\)\s*$/);
-    let n = 0;
-    if (m) n = parseInt(m[1].replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)), 10);
-    fs.writeFileSync(UNREAD_FILE, String(n));
-  }).catch(() => {});
-}, 2000);
+const pushUnread = (title) => {
+  if (typeof title !== 'string') return;
+  if (title !== win.getTitle()) win.setTitle(title);
+  const m = title.match(/\(([0-9\u06F0-\u06F9]{1,4})\)\s*$/);
+  let n = 0;
+  if (m) n = parseInt(m[1].replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)), 10);
+  fs.writeFileSync(UNREAD_FILE, String(n));
+};
 
-app.whenReady().then(() => { createWindow(); });
+app.whenReady().then(() => { createWindow(); fs.writeFileSync(UNREAD_FILE, '0'); });
 
 app.on('window-all-closed', () => {});
 app.on('before-quit', () => { quitting = true; });

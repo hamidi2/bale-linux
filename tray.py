@@ -2,15 +2,16 @@
 # آیکون tray بله — Gtk.StatusIcon
 # کلیک چپ: مخفی→نمایش+فوکوس | نمایان بی‌فوکوس→فوکوس | نمایان فوکوس→مخفی (منطق تلگرام)
 # هر کلیک یک بار عمل می‌کند؛ کلیکی که وسط جابه‌جایی برسد بعد از جا افتادن پنجره اعمال می‌شود
-# شمارنده: title پنجره (xprop -id) — حتی وقتی مخفی
+# شمارنده: فایل state از title زندهٔ رندرر — حتی وقتی پنجره مخفی است
 import subprocess, re, time
 from pathlib import Path
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk, GLib, Gio
 
 BASE = Path(__file__).resolve().parent
-unread_file = Path.home() / '.cache' / 'bale-wrapper' / 'unread'  # main.js می‌نویسد   # کنار همین فایل — هم ~/apps/bale-wrapper هم /opt/bale-linux (deb)
+BASE = Path(__file__).resolve().parent   # کنار همین فایل — هم ~/apps/bale-wrapper هم /opt/bale-linux (deb)
+unread_file = Path.home() / '.cache' / 'bale-wrapper' / 'unread'   # main.js هر تغییر title می‌نویسد
 FLAG = Path.home() / '.config' / 'bale-linux' / 'no-smooth-scrolling'   # بودنِ فایل = اسکرول پله‌ای (بدون لغزش)
 
 def smooth_on():
@@ -121,28 +122,14 @@ def make_icon():
     return ic
 
 _embedded = [None]
-def poll():
-    global last, last_nonzero, icon
-    # خودترمیمی ثبت آیکون: اگر tray.py قبل از پنل بالا آمده باشد یا پنل میان‌کار
-    # ری‌استارت شده باشد، چرخهٔ visible کافی نیست — آیکون باید از نو ساخته شود
-    # تا GTK دوباره manager را ببیند (مسابقهٔ لاگین؛ تجربهٔ کانتینر تست)
-    e = icon.is_embedded()
-    if e != _embedded[0]:
-        print(f'embedded: {e}', flush=True)
-        _embedded[0] = e
-    if not e:
-        print('icon rebuilt', flush=True)
-        icon = make_icon()
-    # شمارنده: اول فایل state که main.js از title زندهٔ صفحه می‌نویسد (مستقل از X —
-    # title در حالت hidden به X نمی‌رسد!)؛ فایل کهنه/غایب → مسیر قدیمی xprop
-    n = 0
+_suppress_timer = [None]
+
+def read_count():
+    # اول فایل state؛ غایب/ناخوانا → مسیر قدیمی xprop (وقتی الکترون از بین رفته)
     try:
-        st = unread_file.stat()
-        if time.time() - st.st_mtime < 15:
-            n = int(unread_file.read_text().strip() or '0')
+        return int(unread_file.read_text().strip() or '0')
     except (OSError, ValueError):
         n = 0
-    if n == 0:
         wid = get_wid()
         if wid:
             r = subprocess.run(['xprop', '-id', wid, '_NET_WM_NAME'], capture_output=True, text=True)
@@ -150,19 +137,48 @@ def poll():
             if m:
                 mm = re.search(r'\((\d{1,4})\)\s*$', m.group(1))
                 if mm: n = int(mm.group(1))
-    # ضدفلیکر: وقتی پنجره باز می‌شود، بله یک لحظه title را بدون عدد می‌گذارد.
-    # صفر را فقط ۴ ثانیه بعد از آخرین عددِ غیرصفر قبول کن.
+        return n
+
+def _unsuppress():
+    _suppress_timer[0] = None
+    apply_count(read_count())
+    return False
+
+def apply_count(n):
+    global last_nonzero
+    # ضدفلیکر: صفرِ لحظه‌ایِ بعد از عدد غیرصفر تا ۴ ثانیه معتبر نیست (بله موقع باز شدن
+    # title را لحظه‌ای صفر می‌گذارد)؛ در دورهٔ grace یک بررسی تک‌ضربانی می‌گذاریم
     now = time.time()
     if n > 0:
         last_nonzero = now
+        _suppress_timer[0] = None
     elif now - last_nonzero < 4:
+        if _suppress_timer[0] is None:
+            _suppress_timer[0] = GLib.timeout_add_seconds(
+                int(4 - (now - last_nonzero)) + 1, _unsuppress)
         n = last[0] if last[0] > 0 else 0
     if n != last[0]:
         last[0] = n
         print(f'count: {n}', flush=True)
         GLib.idle_add(icon.set_from_file, icon_path(n))
         GLib.idle_add(icon.set_tooltip_text, f'Bale — {n} unread' if n else 'Bale')
-    return True   # تایمر ۲ ثانیه‌ای باید زنده بماند
+
+def on_unread_changed(*a):
+    GLib.idle_add(lambda: apply_count(read_count()))
+
+def heartbeat():
+    global icon
+    # ضربان کم‌بسامد (۳۰ ثانیه): فقط سلامت embed آیکون + همگام‌سازی اطمینان؛
+    # به‌روزرسانی شمارنده رویدادی است (FileMonitor روی فایل state)
+    e = icon.is_embedded()
+    if e != _embedded[0]:
+        print(f'embedded: {e}', flush=True)
+        _embedded[0] = e
+    if not e:
+        print('icon rebuilt', flush=True)
+        icon = make_icon()
+    apply_count(read_count())
+    return True
 
 def on_smooth_toggle(mi):
     want_smooth = mi.get_active()
@@ -200,5 +216,7 @@ icon = make_icon()   # اتصال activate/popup-menu داخل make_icon انج�
 last = [-2]
 last_nonzero = 0.0
 
-GLib.timeout_add_seconds(2, poll)
+mon = Gio.File.new_for_path(str(unread_file)).monitor_file(Gio.FileMonitorFlags.NONE, None)
+mon.connect('changed', lambda *a: GLib.idle_add(lambda: apply_count(read_count())))
+GLib.timeout_add_seconds(30, heartbeat)
 Gtk.main()
