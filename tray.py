@@ -10,6 +10,10 @@ gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib
 
 BASE = Path(__file__).resolve().parent   # کنار همین فایل — هم ~/apps/bale-wrapper هم /opt/bale-linux (deb)
+FLAG = Path.home() / '.config' / 'bale-linux' / 'no-smooth-scrolling'   # بودنِ فایل = اسکرول پله‌ای (بدون لغزش)
+
+def smooth_on():
+    return not FLAG.exists()
 
 def icon_path(n):
     if n > 0:
@@ -151,13 +155,35 @@ def poll():
         GLib.idle_add(icon.set_tooltip_text, f'Bale — {n} unread' if n else 'Bale')
     return True   # تایمر ۲ ثانیه‌ای باید زنده بماند
 
+def on_smooth_toggle(mi):
+    want_smooth = mi.get_active()
+    try:
+        if want_smooth:
+            FLAG.unlink(missing_ok=True)
+        else:
+            FLAG.parent.mkdir(parents=True, exist_ok=True)
+            FLAG.touch()
+    except OSError as e:
+        print(f'smooth flag error: {e}', flush=True)
+        return
+    print(f'smooth scrolling -> {"on" if want_smooth else "off"}; restarting bale.service', flush=True)
+    subprocess.Popen(['systemctl', '--user', 'restart', 'bale.service'])
+    def _reshow():
+        subprocess.Popen([str(BASE / 'show-bale.sh')],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return False
+    GLib.timeout_add_seconds(4, _reshow)
+
 def on_popup(si, button, time_):
     menu = Gtk.Menu()
     m1 = Gtk.MenuItem(label='بله — باز/بسته')
     m1.connect('activate', toggle)
+    ms = Gtk.CheckMenuItem(label='اسکرول نرم (لغزشی)')
+    ms.set_active(smooth_on())   # قبل از connect — تا سیگنال کاذب نیاید
+    ms.connect('toggled', on_smooth_toggle)
     m2 = Gtk.MenuItem(label='خروج')
     m2.connect('activate', quit_all)
-    menu.append(m1); menu.append(m2); menu.show_all()
+    menu.append(m1); menu.append(ms); menu.append(m2); menu.show_all()
     menu.popup(None, None, Gtk.StatusIcon.position_menu, si, button, time_)
 
 icon = make_icon()   # اتصال activate/popup-menu داخل make_icon انجام می‌شود — دوباره وصل نکن (هر کلیک دو بار می‌شد!)

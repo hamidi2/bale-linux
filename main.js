@@ -11,6 +11,14 @@ const os = require('os');
 const BALE_URL = 'https://web.bale.ai';
 const startHidden = process.argv.includes('--hidden');
 const STATE_DIR = path.join(os.homedir(), '.cache', 'bale-wrapper');
+// اسکرول نرم: پیش‌فرض روشن (لغزشی مثل تلگرام)؛ فایل نشانگر → خاموش (چابک/پله‌ای)
+const SMOOTH_FLAG = path.join(os.homedir(), '.config', 'bale-linux', 'no-smooth-scrolling');
+if (fs.existsSync(SMOOTH_FLAG)) {
+  app.commandLine.appendSwitch('disable-smooth-scrolling');
+  console.log('smooth scrolling: disabled (marker found)');
+} else {
+  console.log('smooth scrolling: enabled (default)');
+}
 
 let win = null;
 let quitting = false;
