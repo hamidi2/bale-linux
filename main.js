@@ -86,7 +86,31 @@ const pushUnread = (title) => {
   fs.writeFileSync(UNREAD_FILE, String(n));
 };
 
-app.whenReady().then(() => { createWindow(); fs.writeFileSync(UNREAD_FILE, '0'); });
+app.whenReady().then(() => { createWindow(); });
+
+// نصب ناظرِ title در رندرر: MutationObserver روی <title> حتی در حالت hidden
+// می‌شمارد (رندرر زنده است) و تغییر را با کنسول به main می‌فرستد — رویدادِ
+// page-title-updated در برخی حالت‌های hidden قابل‌اتکا نیست
+const installTitleWatcher = () => {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.executeJavaScript(`
+    (function () {
+      if (window.__baleTitleObs) return;
+      const push = () => console.log('__BALE_TITLE__' + document.title);
+      window.__baleTitleObs = new MutationObserver(push);
+      const t = document.querySelector('title');
+      if (t) window.__baleTitleObs.observe(t, { subtree: true, childList: true, characterData: true });
+      push();
+    })();
+  `, true).catch(() => {});
+};
+win.webContents.on('dom-ready', installTitleWatcher);
+win.webContents.on('did-finish-load', installTitleWatcher);
+win.webContents.on('console-message', (e, level, message) => {
+  if (typeof message === 'string' && message.startsWith('__BALE_TITLE__')) {
+    pushUnread(message.slice('__BALE_TITLE__'.length));
+  }
+});
 
 app.on('window-all-closed', () => {});
 app.on('before-quit', () => { quitting = true; });
