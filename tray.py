@@ -9,7 +9,8 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib
 
-BASE = Path(__file__).resolve().parent   # کنار همین فایل — هم ~/apps/bale-wrapper هم /opt/bale-linux (deb)
+BASE = Path(__file__).resolve().parent
+unread_file = Path.home() / '.cache' / 'bale-wrapper' / 'unread'  # main.js می‌نویسد   # کنار همین فایل — هم ~/apps/bale-wrapper هم /opt/bale-linux (deb)
 FLAG = Path.home() / '.config' / 'bale-linux' / 'no-smooth-scrolling'   # بودنِ فایل = اسکرول پله‌ای (بدون لغزش)
 
 def smooth_on():
@@ -132,15 +133,23 @@ def poll():
     if not e:
         print('icon rebuilt', flush=True)
         icon = make_icon()
-    # شمارنده: «(N)» انتهای title پنجره (خودِ بله می‌گذارد) — حتی وقتی پنجره مخفی است
+    # شمارنده: اول فایل state که main.js از title زندهٔ صفحه می‌نویسد (مستقل از X —
+    # title در حالت hidden به X نمی‌رسد!)؛ فایل کهنه/غایب → مسیر قدیمی xprop
     n = 0
-    wid = get_wid()
-    if wid:
-        r = subprocess.run(['xprop', '-id', wid, '_NET_WM_NAME'], capture_output=True, text=True)
-        m = re.search(r'=\s*"(.*)"\s*$', r.stdout)
-        if m:
-            mm = re.search(r'\((\d{1,4})\)\s*$', m.group(1))
-            if mm: n = int(mm.group(1))
+    try:
+        st = unread_file.stat()
+        if time.time() - st.st_mtime < 15:
+            n = int(unread_file.read_text().strip() or '0')
+    except (OSError, ValueError):
+        n = 0
+    if n == 0:
+        wid = get_wid()
+        if wid:
+            r = subprocess.run(['xprop', '-id', wid, '_NET_WM_NAME'], capture_output=True, text=True)
+            m = re.search(r'=\s*"(.*)"\s*$', r.stdout)
+            if m:
+                mm = re.search(r'\((\d{1,4})\)\s*$', m.group(1))
+                if mm: n = int(mm.group(1))
     # ضدفلیکر: وقتی پنجره باز می‌شود، بله یک لحظه title را بدون عدد می‌گذارد.
     # صفر را فقط ۴ ثانیه بعد از آخرین عددِ غیرصفر قبول کن.
     now = time.time()

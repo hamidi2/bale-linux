@@ -73,6 +73,21 @@ app.on('second-instance', () => {
   win.focus();
 });
 
+// شمارندهٔ unread: title زندهٔ صفحه هر ۲ ثانیه مستقیم از رندرر خوانده و در فایل
+// state نوشته می‌شود؛ tray.py از فایل می‌خواند چون title در حالت hidden به X نمی‌رسد
+const UNREAD_FILE = path.join(STATE_DIR, 'unread');
+setInterval(() => {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.executeJavaScript('document.title', true).then((title) => {
+    if (typeof title !== 'string') return;
+    if (title !== win.getTitle()) win.setTitle(title);
+    const m = title.match(/\(([0-9\u06F0-\u06F9]{1,4})\)\s*$/);
+    let n = 0;
+    if (m) n = parseInt(m[1].replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)), 10);
+    fs.writeFileSync(UNREAD_FILE, String(n));
+  }).catch(() => {});
+}, 2000);
+
 app.whenReady().then(() => { createWindow(); });
 
 app.on('window-all-closed', () => {});
