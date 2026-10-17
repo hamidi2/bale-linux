@@ -168,15 +168,15 @@ def on_unread_changed(*a):
     GLib.idle_add(lambda: apply_count(read_count()))
 
 def _docked():
-    """plug واقعاً داخل پنل نشسته؟ (is_embedded گاهی دروغ می‌گوید — plug یتیم منفی جا خوش می‌کند)"""
+    """plug واقعاً داخل پنل نشسته؟ — پارسِ درست: اندازه از توکن WxH+x+y و مختصات مطلق از توکن آخر"""
     out = subprocess.run(['xwininfo', '-root', '-tree'], capture_output=True, text=True).stdout
     for line in out.splitlines():
         if '"tray.py"' in line:
             toks = line.split()
-            if len(toks) >= 3:
-                wh = re.match(r'(\d+)x(\d+)$', toks[-2])
+            if len(toks) >= 2:
+                ms = re.match(r'(\d+)x\d+', toks[-2])
                 xy = re.match(r'\+(-?\d+)\+(-?\d+)$', toks[-1])
-                if wh and xy and int(wh.group(1)) >= 15 and int(xy.group(1)) >= 0 and int(xy.group(2)) >= 0:
+                if ms and int(ms.group(1)) >= 15 and xy and int(xy.group(1)) >= 0 and int(xy.group(2)) >= 0:
                     return True
     return False
 
